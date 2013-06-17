@@ -2,44 +2,51 @@
 /*
 Plugin Name: cM Naming - Title Sorting
 Description: Modify queries ( wp_query ) to ignore English prefixes (a, an, the) in sorting.  Only applys to sorting by title with native wordpress functions.
-Version: 0.0.1
+Version: 0.0.2
 Author: Chase C. Miller
 Author Email: chasecmiller@gmail.com
 */
 if (!defined('ABSPATH')) { return; }
 
 class cm_naming {
-	private $bParse = false;
+	private $aSettings = array(
+		'prefixes' => array(
+			'A',
+			'An',
+			'The'
+		)
+	);
 	function __construct() { 
-//		add_action( 'pre_get_posts', array(&$this, 'handlePreQuery'));
-//		add_action('posts_selection', array(&$this, 'test'));
-		add_filter( 'posts_where', array(&$this, 'handlePostsWhere'), 10, 2);
+		add_filter('posts_where', array(&$this, 'handlePostsWhere'), 10, 2);
 		add_filter('posts_orderby', array(&$this, 'handlePostsOrderBy'));
 	}
 	public function handlePostsOrderBy($sOrder = null) {
 		global $wpdb;
-		if (!$this->bParse) { return $sOrder; }
+		if (!isset($this->aSettings['bParse']) || !$this->aSettings['bParse']) { return $sOrder; }
+		if (!sizeof($this->aSettings['prefixes'])) { return $sOrder; }
+		// Remove in following releases if supporting multiple queries.
+		// Idea is to cache our query string.
+		if (isset($this->aSettings['order'])) { return $this->aSettings['order']; }
 		$sOrderBy = stripos($sOrder, ' asc') ? ' asc' : ' desc';
-		
 		$sField = $wpdb->posts.'.post_title';
-//		return $sOrder;
-		$sOrder = 'IF(LEFT('.$sField.',2) = "A ",
-			SUBSTRING('.$sField.' FROM 3),
-			IF(LEFT('.$sField.',3) = "An ",
-				SUBSTRING('.$sField.' FROM 4),
-			IF(LEFT('.$sField.',4) = "The ",
-				SUBSTRING('.$sField.' FROM 5),
-			'.$sField.')))'.$sOrderBy;
-//				 echo $sOrder;
-		return $sOrder;
-		
+		$sModifid = '';
+		foreach($this->aSettings['prefixes'] as $sPrefix) {
+			$i = strlen($sPrefix)+1;
+			$sModified .= 'IF(LEFT('.$sField.','.$i.') = "'.$sPrefix.' ",
+				SUBSTRING('.$sField.' FROM '.($i+1).'), ';
+		}
+		if (strlen($sModified) > 0) {
+			$sModified .= $sField.')))'.$sOrderBy;
+			$this->aSettings['order'] = $sModified;
+			return $sModified;	
+		}
 	}
 	function handlePostsWhere( $where, &$oQuery) {
 		global $wpdb;
 		if (!is_object($oQuery) || !isset($oQuery->query) || !is_array($oQuery->query) || !isset($oQuery->query['orderby']) || ($oQuery->query['orderby'] != 'title')) {
 			return $where;
 		}
-		$this->bParse = true;
+		$this->aSettings['bParse'] = true;
 		return $where;
 	}
 }
